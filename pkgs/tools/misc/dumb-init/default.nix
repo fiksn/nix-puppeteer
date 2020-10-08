@@ -1,11 +1,12 @@
-# generated using pypi2nix tool (version: 1.8.1)
-# See more at: https://github.com/garbas/pypi2nix
+# generated using pypi2nix tool (version: 2.0.4)
+# See more at: https://github.com/nix-community/pypi2nix
 #
 # COMMAND:
-#   pypi2nix -V 3.5 -e dumb-init
+#   pypi2nix -e dumb-init
 #
 
-{ pkgs ? import <nixpkgs> {}
+{ pkgs ? import <nixpkgs> {},
+  overrides ? ({ pkgs, python }: self: super: {})
 }:
 
 let
@@ -17,16 +18,7 @@ let
   import "${toString pkgs.path}/pkgs/top-level/python-packages.nix" {
     inherit pkgs;
     inherit (pkgs) stdenv;
-    python = pkgs.python35;
-    # patching pip so it does not try to remove files when running nix-shell
-    overrides =
-      self: super: {
-        bootstrapped-pip = super.bootstrapped-pip.overrideDerivation (old: {
-          patchPhase = old.patchPhase + ''
-            sed -i               -e "s|paths_to_remove.remove(auto_confirm)|#paths_to_remove.remove(auto_confirm)|"                -e "s|self.uninstalled = paths_to_remove|#self.uninstalled = paths_to_remove|"                  $out/${pkgs.python35.sitePackages}/pip/req/req_install.py
-          '';
-        });
-      };
+    python = pkgs.python3;
   };
 
   commonBuildInputs = [];
@@ -35,16 +27,18 @@ let
   withPackages = pkgs':
     let
       pkgs = builtins.removeAttrs pkgs' ["__unfix__"];
-      interpreter = pythonPackages.buildPythonPackage {
-        name = "python35-interpreter";
-        buildInputs = [ makeWrapper ] ++ (builtins.attrValues pkgs);
+      interpreterWithPackages = selectPkgsFn: pythonPackages.buildPythonPackage {
+        name = "python3-interpreter";
+        buildInputs = [ makeWrapper ] ++ (selectPkgsFn pkgs);
         buildCommand = ''
           mkdir -p $out/bin
-          ln -s ${pythonPackages.python.interpreter}               $out/bin/${pythonPackages.python.executable}
-          for dep in ${builtins.concatStringsSep " "               (builtins.attrValues pkgs)}; do
+          ln -s ${pythonPackages.python.interpreter} \
+              $out/bin/${pythonPackages.python.executable}
+          for dep in ${builtins.concatStringsSep " "
+              (selectPkgsFn pkgs)}; do
             if [ -d "$dep/bin" ]; then
               for prog in "$dep/bin/"*; do
-                if [ -f $prog ]; then
+                if [ -x "$prog" ] && [ -f "$prog" ]; then
                   ln -s $prog $out/bin/`basename $prog`
                 fi
               done
@@ -55,18 +49,26 @@ let
           done
           pushd $out/bin
           ln -s ${pythonPackages.python.executable} python
-          ln -s ${pythonPackages.python.executable}               python3
+          ln -s ${pythonPackages.python.executable} \
+              python3
           popd
         '';
         passthru.interpreter = pythonPackages.python;
       };
+
+      interpreter = interpreterWithPackages builtins.attrValues;
     in {
       __old = pythonPackages;
       inherit interpreter;
-      mkDerivation = pythonPackages.buildPythonPackage;
+      inherit interpreterWithPackages;
+      mkDerivation = args: pythonPackages.buildPythonPackage (args // {
+        nativeBuildInputs = (args.nativeBuildInputs or []) ++ args.buildInputs;
+      });
       packages = pkgs;
       overrideDerivation = drv: f:
-        pythonPackages.buildPythonPackage (drv.drvAttrs // f drv.drvAttrs //                                            { meta = drv.meta; });
+        pythonPackages.buildPythonPackage (
+          drv.drvAttrs // f drv.drvAttrs // { meta = drv.meta; }
+        );
       withPackages = pkgs'':
         withPackages (pkgs // pkgs'');
     };
@@ -74,29 +76,36 @@ let
   python = withPackages {};
 
   generated = self: {
-
     "dumb-init" = python.mkDerivation {
-      name = "dumb-init-1.2.1";
-      src = pkgs.fetchurl { url = "https://files.pythonhosted.org/packages/8a/b3/273bc23607e6e44b8c9d4902f15ab43dd1ad962725665946608f222e377e/dumb-init-1.2.1.tar.gz"; sha256 = "6699bf08dc8d44db61c7e2d2855d78011c8d1af30ebbec924e5e979604579628"; };
+      name = "dumb-init-1.2.2";
+      src = pkgs.fetchurl {
+        url = "https://files.pythonhosted.org/packages/7e/32/817e967fa6c20d4568537016a2f27f00d9c6194778a41835e185e4feea0c/dumb-init-1.2.2.tar.gz";
+        sha256 = "62704cc0246752f941dc70bb61ad93726586791cc995171bd08b2752be0dfb90";
+};
       doCheck = commonDoCheck;
-      buildInputs = commonBuildInputs;
+      format = "setuptools";
+      buildInputs = commonBuildInputs ++ [
+
+      ];
       propagatedBuildInputs = [ ];
       meta = with pkgs.stdenv.lib; {
         homepage = "https://github.com/Yelp/dumb-init/";
-        license = "";
+        license = "UNKNOWN";
         description = "Simple wrapper script which proxies signals to a child";
       };
     };
-
   };
   localOverridesFile = ./requirements_override.nix;
-  overrides = import localOverridesFile { inherit pkgs python; };
+  localOverrides = import localOverridesFile { inherit pkgs python; };
   commonOverrides = [
-
+        (let src = pkgs.fetchFromGitHub { owner = "nix-community"; repo = "pypi2nix-overrides"; rev = "90e891e83ffd9e55917c48d24624454620d112f0"; sha256 = "0cl1r3sxibgn1ks9xyf5n3rdawq4hlcw4n6xfhg3s1kknz54jp9y"; } ; in import "${src}/overrides.nix" { inherit pkgs python; })
+  ];
+  paramOverrides = [
+    (overrides { inherit pkgs python; })
   ];
   allOverrides =
     (if (builtins.pathExists localOverridesFile)
-     then [overrides] else [] ) ++ commonOverrides;
+     then [localOverrides] else [] ) ++ commonOverrides ++ paramOverrides;
 
 in python.withPackages
    (fix' (pkgs.lib.fold

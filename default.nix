@@ -5,7 +5,7 @@ with import nixpkgs {
     allowUnfree = true;
     packageOverrides = pkgs: rec {
       dumb-init = (import ./pkgs/tools/misc/dumb-init {}).packages.dumb-init;
-      nodejs = pkgs.nodejs-8_x;
+      nodejs = pkgs.nodejs;
       nodePackages = pkgs.nodePackages //
         pkgs.callPackage ./pkgs/development/node-packages {};
     };
