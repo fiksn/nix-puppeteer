@@ -1,17 +1,21 @@
 { nixpkgs ? <nixpkgs> }:
 
 with import nixpkgs {
+  overlays = [
+    (self: super:
+      {
+        dumb-init = (import ./pkgs/tools/misc/dumb-init { }).packages.dumb-init;
+        nodejs = super.nodejs;
+        nodePackages = super.nodePackages //
+          super.callPackage ./pkgs/development/node-packages/override.nix { };
+      }
+    )
+  ];
+
   config = {
     allowUnfree = true;
-    packageOverrides = pkgs: rec {
-      dumb-init = (import ./pkgs/tools/misc/dumb-init {}).packages.dumb-init;
-      nodejs = pkgs.nodejs;
-      nodePackages = pkgs.nodePackages //
-        pkgs.callPackage ./pkgs/development/node-packages {};
-    };
   };
 };
-
 let
   version = builtins.readFile ./VERSION;
 
@@ -49,11 +53,10 @@ let
   NODE_PATH = "${nodejs}/lib/node_modules:${nodePackages.puppeteer}/lib/node_modules";
 
   fontsConf = makeFontsConf {
-    fontDirectories = [];
+    fontDirectories = [ ];
   };
 
 in
-
 {
   docker = dockerTools.buildImage {
     name = "yurrriq/nix-puppeteer";
